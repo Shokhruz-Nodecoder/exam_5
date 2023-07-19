@@ -3,7 +3,7 @@ const { create, getAllChannels } = require("../controllers/chanel.controller")
 
 
 const router =  Router()
-router.post("/chanel", create)
+router.post("/channel", create)
 router.get("/allchannels", getAllChannels)
 
 
