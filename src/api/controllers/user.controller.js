@@ -2,52 +2,75 @@ const conn = require("../models/connection");
 const Channel = require("../models/channels.schema");
 const Subscription = require("../models/subscp.schema");
 
-const User = require("../models/users.schema");
+const usersSchema = require("../models/users.schema");
+const followersSchema = require("../models/followers.schema");
 
 const usersSubscription = async (req, res) => {
-  try {
-    const { user_id, months, cost } = req.body;
-    const { channel_id } = req.params;
-    const userBalance = await User.findById(user_id);
-    const channel = await Channel.findById(channel_id);
-    const adminBalance = await User.findById(channel.admin_id);
+  const { user_id, months, cost } = req.body;
+  const { channel_id } = req.params;
+  const session = await conn.startSession();
 
-    const findMonths = (
-      await Subscription.find({ channel_id: channel.id })
-    ).some((values) => values.months === months && values.cost === cost);
+  const userBalance = await usersSchema.findById(user_id);
+  const checkChannel = await Subscription.find({ channel_id: channel_id });
+  // console.log(checkChannel);
+  const checkUserFollow = await followersSchema.find({
+    channel_id: channel_id,
+  });
+  console.log(checkUserFollow);
 
-    if (findMonths) {
-      const session = await conn.startSession();
+  if (checkUserFollow.length < 1) {
+    const costMonth = checkChannel.some(
+      (data) => data.months === months && data.cost === cost
+    );
 
-      if (!userBalance) {
-        return res.status(404).json({ message: "User not found" });
-      } else if (userBalance.balance < cost || cost < 0) {
-        return res.status(404).json({ message: "Balance not enough" });
+    const channelBalance = await Channel.findById(channel_id);
+    const channelAdmin = await channelBalance.admin_id;
+    const admin_id = await usersSchema.findById(channelAdmin);
+
+    if (cost === undefined) {
+      res
+        .status(404)
+        .json({ message: "Please provide a value for the channel payment" });
+
+      if (userBalance.balance > cost || cost < 0) {
+        return res.status(404).json({ message: "not enough balance" });
       }
+    } else if (costMonth) {
+      userBalance.status = "active";
+
+      console.log(userBalance.status);
+
+      userBalance.expirationDate = new Date(
+        new Date().getTime() + months * 30 * 24 * 60 * 60 * 1000
+      );
 
       userBalance.balance = userBalance.balance - cost;
-      adminBalance.balance = adminBalance.balance + cost;
+      admin_id.balance = admin_id.balance + cost;
+
+      const newFollower = new followersSchema({
+        startDate: new Date(),
+        endDate: userBalance.expirationDate,
+        user_id,
+        channel_id,
+        status: userBalance.status,
+        cost: cost,
+        months,
+      });
 
       await session.withTransaction(async () => {
         await userBalance.save();
-        await adminBalance.save();
+        await newFollower.save();
+        await admin_id.save();
       });
 
-
-      
       session.endSession();
 
-      res.status(200).json({ message: "Payment successfully finished" });
-    } else {
-      return res
-        .status(404)
-        .json({ message: "This Subscription is not authorized" });
+      return res.json({ message: "Successfully transaction finished" });
     }
-  } catch (error) {
-    return res.status(404).json({ message: error.message });
+  } else {
+    res.status(402).json({ message: "You already subscribed" });
   }
 };
-
 const userBalanceFill = async (req, res) => {
   try {
     const { user_id, money } = req.body;
@@ -72,7 +95,31 @@ const userBalanceFill = async (req, res) => {
   }
 };
 
+const userStatus = async (req, res) => {
+  try {
+    const { id } = req.params;
+
+    const user = await followersSchema.find({ user_id: id });
+    if (user) {
+      const channelId = user[0].channel_id;
+      const channel = await followersSchema.find({ channel_id: channelId });
+      const channelName = await Channel.find({ _id: channelId });
+      return res.status(200).json({
+        message: `User status: ${user[0].status}`,
+        ChannelName: channelName[0].name,
+        Channel: channel.length ? channel : "Not found",
+      });
+    } else {
+      res.status(404).json({ message: "Not followed channels" });
+    }
+  } catch (error) {
+    res.json({ msg: error.message });
+  }
+};
+
 module.exports = {
   usersSubscription,
   userBalanceFill,
+
+  userStatus,
 };

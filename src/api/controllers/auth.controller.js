@@ -11,7 +11,7 @@ const login = async (req, res) => {
     const compare = await comparePass(password, findUser[0].password);
 
     if (!compare) {
-      return res.status(404).json({message: 'Passwords do not match'});
+      return res.status(404).json({ message: "Passwords do not match" });
     }
     const token = jwt.sign({ userId: findUser.id });
 
@@ -38,12 +38,12 @@ const register = async (req, res) => {
     }
 
     const token = jwt.sign({ userId: findUser.id });
-    
+
     res.cookie("token", token);
 
     await user.save();
 
-    res.status(201).json({ message: "User added", data: user, token:token });
+    res.status(201).json({ message: "User added", data: user, token: token });
   } catch (error) {
     console.log(error);
   }
